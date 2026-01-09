@@ -5,10 +5,24 @@
 ## Quick Start
 
 ```dart
+import 'package:app/core/datasource/datasource.dart';
+import 'package:app/addons/addons.dart';
+import 'package:app/app_config.dart';
+
 // 1. 앱 시작 시 초기화
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await DS.initialize();  // DataSource 초기화
+
+  // DataSource 초기화
+  await DS.initialize();
+
+  // Addons 초기화 (선택적 기능)
+  await AddonRegistry.initialize([
+    if (AppConfig.enableNotification) NotificationAddon(),
+    if (AppConfig.enablePayment) PaymentAddon(publishableKey: 'pk_...'),
+    if (AppConfig.enableMedia) MediaAddon(),
+  ]);
+
   runApp(MyApp());
 }
 
@@ -41,10 +55,12 @@ lib/
 │   │   ├── local/            #     → 로컬 저장 (캐시)
 │   │   └── secure/           #     → 토큰 저장
 │   │
-│   ├── themes/               # 🎨 디자인 토큰
+│   ├── themes/               # 🎨 디자인 토큰 (반응형 지원)
 │   │   ├── app_theme.dart    #     → ThemeData 생성
 │   │   ├── color_theme.dart  #     → 색상 (JSON에서 로드)
-│   │   ├── app_spacing.dart  #     → 간격 (xs~xxxxxl)
+│   │   ├── app_spacing.dart  #     → 간격 (반응형: AppSpacing.responsive(context).md)
+│   │   ├── app_typography.dart #   → 타이포 (반응형: AppTypography.responsive(context).h1)
+│   │   ├── responsive.dart   #     → 반응형 유틸 (context.isMobile, Breakpoints)
 │   │   └── ...
 │   │
 │   ├── router/               # 🧭 라우팅
@@ -65,17 +81,23 @@ lib/
 │   ├── auth/                 # 인증 (필수)
 │   ├── user/                 # 사용자 (필수)
 │   ├── home/                 # 홈 화면
-│   ├── settings/             # 설정
-│   ├── payment/              # 결제 → addons로 이동 예정
-│   ├── notification/         # 알림 → addons로 이동 예정
-│   ├── admin/                # 관리자 → addons로 이동 예정
-│   └── feedback/             # 피드백 → addons로 이동 예정
+│   └── settings/             # 설정
 │
-└── addons/                   # 🧩 선택적 기능 (TODO)
+└── addons/                   # 🧩 선택적 기능 (플러그인 방식)
+    ├── addon_registry.dart   # Addon 등록/관리
+    ├── addons.dart           # 통합 export
+    │
+    ├── notification/         # 알림 (FCM + Local)
+    │   ├── notification_addon.dart
+    │   └── README.md
+    │
     ├── payment/              # 결제 (Stripe)
-    ├── notification/         # 알림 (FCM)
-    ├── media/                # 미디어 피커
-    └── ...
+    │   ├── payment_addon.dart
+    │   └── README.md
+    │
+    └── media/                # 미디어 (이미지/비디오)
+        ├── media_addon.dart
+        └── README.md
 ```
 
 ---
@@ -335,7 +357,7 @@ Container(
 ## Spacing System
 
 ```dart
-// 사용 가능한 간격
+// 사용 가능한 간격 (정적)
 AppSpacing.xs     // 4
 AppSpacing.sm     // 8
 AppSpacing.md     // 16
@@ -344,17 +366,87 @@ AppSpacing.xl     // 32
 AppSpacing.xxl    // 40
 AppSpacing.xxxl   // 48
 
-// 사용법
+// 정적 사용법
 Padding(
   padding: EdgeInsets.all(AppSpacing.md),
   child: ...
 )
 
-SizedBox(height: AppSpacing.sm)
+// 반응형 사용법 (NEW)
+final sp = AppSpacing.responsive(context);
+Padding(
+  padding: EdgeInsets.all(sp.md), // 디바이스별 자동 조정
+  child: ...
+)
+```
 
-// 헬퍼 (이미 있음)
-AppSpacing.verticalSm  // SizedBox(height: 8)
-AppSpacing.horizontalMd // SizedBox(width: 16)
+---
+
+## Responsive System
+
+```dart
+// 디바이스 타입 확인
+if (context.isMobile) { ... }
+if (context.isTablet) { ... }
+if (context.isDesktop) { ... }
+
+// 디바이스별 다른 값
+final padding = context.responsive<double>(
+  mobile: 16,
+  tablet: 24,
+  desktop: 32,
+);
+
+// 반응형 간격
+final sp = AppSpacing.responsive(context);
+sp.xs  // mobile: 4, tablet: 6, desktop: 8
+sp.sm  // mobile: 8, tablet: 12, desktop: 16
+sp.md  // mobile: 16, tablet: 20, desktop: 24
+
+// 반응형 타이포그래피
+final typo = AppTypography.responsive(context);
+Text('Hello', style: typo.h1) // 디바이스별 폰트 크기 자동 조정
+
+// 반응형 위젯
+ResponsiveWidget(
+  mobile: MobileLayout(),
+  tablet: TabletLayout(),
+  desktop: DesktopLayout(),
+)
+```
+
+---
+
+## Addons System
+
+```dart
+// 1. main.dart에서 초기화
+await AddonRegistry.initialize([
+  if (AppConfig.enableNotification) NotificationAddon(),
+  if (AppConfig.enablePayment) PaymentAddon(publishableKey: 'pk_...'),
+  if (AppConfig.enableMedia) MediaAddon(),
+]);
+
+// 2. Addon 활성화 확인
+if (NotificationHelper.isEnabled) {
+  await NotificationCore.requestPermission();
+}
+
+if (PaymentHelper.isEnabled) {
+  final intent = await createPaymentIntent(...);
+}
+
+if (MediaHelper.isEnabled) {
+  final image = await MediaPickerUtils.pickImage();
+}
+
+// 3. 라우터에 Addon 라우트 추가
+final router = GoRouter(
+  routes: [
+    ...baseRoutes,
+    ...AddonRegistry.routes,
+  ],
+);
 ```
 
 ---
