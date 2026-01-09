@@ -64,6 +64,8 @@ dependencies:
 
   country_code_picker: any
   logger: any
+  dio: ^5.9.0
+  flutter_secure_storage: ^10.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
